@@ -31,9 +31,16 @@ vps-proxy-deploy/
 
 ## 安装为全局 Skill
 
-将本仓库克隆到全局 Skills 目录即可在所有工作区自动生效：
+从技能市场仓库一键安装（自动适配 Gemini / Claude Code / OpenCode / Codex）：
 
 ```bash
-mkdir -p ~/.gemini/config/skills
-git clone git@github.com:lowtech81/vps-proxy-deploy.git ~/.gemini/config/skills/vps-proxy-deploy
+# 第二个参数可指定目标：gemini | claude | opencode | codex | all
+curl -fsSL https://raw.githubusercontent.com/lowtech81/agent-skills/main/scripts/install.sh | bash -s -- vps-proxy-deploy gemini
+```
+
+也可以克隆整个市场仓库后本地执行：
+
+```bash
+git clone https://github.com/lowtech81/agent-skills.git /tmp/agent-skills
+bash /tmp/agent-skills/scripts/install.sh vps-proxy-deploy claude
 ```

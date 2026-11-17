@@ -79,7 +79,7 @@ Always verify cloud firewall rules for **both `TCP` and `UDP`** on the proxy por
 
 ### Pitfall A: Custom Extended Nodes Appearing Twice in Proxy Groups
 - **Cause**: In Clash Verge Rev's profile enhancement pipeline, `Merge` runs **before** `Script`. When the Merge template sets `include-all-proxies: true` on proxy groups, and the Script also manually prepends custom node names into `g.proxies` without deleting `include-all-proxies: true`, Mihomo includes `g.proxies` first and then appends all `config.proxies` (which also contains the custom nodes) a second time.
-- **Fix**: In the Script, for any group where `g["include-all-proxies"]` is true, expand all deduplicated proxy names into `g.proxies` once and `delete g["include-all-proxies"]`. Also skip ad-block groups (`🛑 广告拦截` / `REJECT`only groups).
+- **Fix**: In the Script, for any group where `g["include-all-proxies"]` is true, expand all deduplicated proxy names into `g.proxies` once and `delete g["include-all-proxies"]`. Also skip ad-block groups (`🛑 广告拦截` / `REJECT`-only groups).
 
 ### Pitfall B: Domain-Based Proxy Nodes Timing Out
 - **Cause**: Minimal remote subscriptions often omit the `dns:` section and leave `ipv6: true`. On client networks without IPv6, Mihomo either lacks upstream `nameserver` / `proxy-server-nameserver` entries or resolves Cloudflare/CDN domain nodes to unreachable IPv6 `AAAA` addresses.

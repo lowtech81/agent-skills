@@ -55,8 +55,9 @@ function main(config, profileName) {
   var allProxyNames = [];
   for (var a = 0; a < kept.length; a++) allProxyNames.push(kept[a].name);
 
-  // 4) Populate proxy-groups without duplicating nodes when include-all-proxies is enabled
+  // 4) Populate proxy-groups without duplicating nodes when include-all* is enabled
   var groups = config["proxy-groups"] || [];
+  var hasProviders = !!(config["proxy-providers"] && Object.keys(config["proxy-providers"]).length > 0);
   for (var m = 0; m < groups.length; m++) {
     var g = groups[m];
     if (!g || g.name === "🛑 广告拦截") continue;
@@ -64,7 +65,12 @@ function main(config, profileName) {
     var list = [];
     var seen = {};
 
-    if (g["include-all-proxies"]) {
+    // `include-all` also pulls in provider proxies, which cannot be expanded
+    // statically here. Leave such groups untouched: the custom nodes already
+    // live in config.proxies and are included automatically exactly once.
+    if (g["include-all"] && hasProviders) continue;
+
+    if (g["include-all-proxies"] || g["include-all"]) {
       for (var p = 0; p < existing.length; p++) {
         var item = existing[p];
         if (names.indexOf(item) === -1 && !seen[item]) {
@@ -81,6 +87,7 @@ function main(config, profileName) {
       }
       g.proxies = list;
       delete g["include-all-proxies"];
+      delete g["include-all"];
     } else if (existing.length > 0) {
       for (var n = 0; n < names.length; n++) {
         if (!seen[names[n]]) {

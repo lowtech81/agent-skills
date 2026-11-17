@@ -39,6 +39,10 @@ detect_physical_interface() {
 }
 
 PHYS_IF="$(detect_physical_interface)"
+if [ -z "${PHYS_IF}" ]; then
+    echo "[WARN] Could not detect a physical interface. If a VPN/TUN is active, results may be false positives."
+    echo "[WARN] Re-run with PHYS_IF=<iface> (e.g. eth0) to force interface binding."
+fi
 echo "=== 1. Detected Physical Outbound Interface: ${PHYS_IF:-default} ==="
 
 # 2. Direct TCP & TLS 1.3 REALITY Handshake Check over Physical Interface
@@ -91,7 +95,18 @@ fi
 
 echo "=== 3. Running Isolated Mihomo End-to-End URLTest (using ${MIHOMO_BIN}) ==="
 TMP_DIR="$(mktemp -d /tmp/mihomo_verify.XXXXXX)"
-trap 'rm -rf "${TMP_DIR}"' EXIT
+MPID=""
+cleanup() {
+    if [ -n "${MPID}" ]; then
+        kill "${MPID}" 2>/dev/null || true
+        wait "${MPID}" 2>/dev/null || true
+        MPID=""
+    fi
+    rm -rf "${TMP_DIR}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 IFACE_LINE=""
 if [ -n "${PHYS_IF}" ]; then
@@ -146,7 +161,21 @@ EOF
 
 "${MIHOMO_BIN}" -d "${TMP_DIR}" -f "${TMP_DIR}/config.yaml" >"${TMP_DIR}/mihomo.log" 2>&1 &
 MPID=$!
-sleep 2
+
+# Wait for the REST API instead of a fixed sleep; slow machines otherwise produce false failures.
+MIHOMO_READY=0
+TRIES=0
+while [ "${TRIES}" -lt 20 ]; do
+    if curl -sS -m 1 --noproxy '*' "http://127.0.0.1:19099/version" >/dev/null 2>&1; then
+        MIHOMO_READY=1
+        break
+    fi
+    TRIES=$((TRIES + 1))
+    sleep 0.25
+done
+if [ "${MIHOMO_READY}" -ne 1 ]; then
+    echo "[WARN] Mihomo REST API did not become ready; URLTest may report errors."
+fi
 
 for node in "Verify-VLESS-Reality" "Verify-Hysteria2"; do
     echo -n "URLTest [${node}]: "
@@ -155,6 +184,8 @@ for node in "Verify-VLESS-Reality" "Verify-Hysteria2"; do
 done
 
 kill "${MPID}" 2>/dev/null || true
+wait "${MPID}" 2>/dev/null || true
+MPID=""
 echo ""
 echo "=== 4. Handshake Debug Summary ==="
 grep -E "(REALITY|XTLS|error)" "${TMP_DIR}/mihomo.log" | tail -n 25 || true
