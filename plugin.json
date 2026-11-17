@@ -1,0 +1,20 @@
+{
+  "name": "lowtech81-agent-skills",
+  "displayName": "Lowtech81 Agent Skills Marketplace",
+  "description": "Curated collection of practical AI coding agent skills for DevOps, cloud infrastructure, and dual-stack proxy deployment.",
+  "version": "1.0.0",
+  "author": {
+    "name": "lowtech81",
+    "url": "https://github.com/lowtech81"
+  },
+  "homepage": "https://github.com/lowtech81/agent-skills",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lowtech81/agent-skills.git"
+  },
+  "suggestedPrompts": [
+    "Deploy VLESS-REALITY and Hysteria 2 proxy services on my VPS",
+    "Verify direct physical connectivity to my proxy server bypassing local VPN",
+    "Troubleshoot why my REALITY proxy node times out in Clash Verge"
+  ]
+}

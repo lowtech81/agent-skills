@@ -1,0 +1,26 @@
+{
+  "name": "lowtech81-agent-skills",
+  "owner": {
+    "name": "lowtech81",
+    "url": "https://github.com/lowtech81"
+  },
+  "metadata": {
+    "description": "Universal AI Agent Skills Marketplace compatible with Claude Code, Gemini, Antigravity, OpenCode, and Codex.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "vps-proxy-deploy",
+      "description": "Deploy, verify, and troubleshoot dual-stack proxy services (VLESS + XTLS-Vision + REALITY and Hysteria 2) on remote Linux VPS servers, perform true direct-line verification bypassing local VPN/TUN interfaces, and export configurations for Clash, Shadowrocket, v2rayN, and Sing-box.",
+      "version": "1.0.0",
+      "author": {
+        "name": "lowtech81"
+      },
+      "source": "./",
+      "category": "devops",
+      "skills": [
+        "./skills/vps-proxy-deploy"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "lowtech81-agent-skills",
+  "description": "Curated collection of practical AI coding agent skills for DevOps, cloud infrastructure, and dual-stack proxy deployment.",
+  "version": "1.0.0",
+  "author": {
+    "name": "lowtech81",
+    "url": "https://github.com/lowtech81"
+  },
+  "homepage": "https://github.com/lowtech81/agent-skills",
+  "repository": "https://github.com/lowtech81/agent-skills",
+  "license": "MIT",
+  "skills": [
+    "./skills/vps-proxy-deploy"
+  ]
+}
