@@ -31,7 +31,18 @@ elif command -v yum >/dev/null 2>&1; then
     yum install -y -q curl openssl jq ca-certificates unzip iproute
 fi
 
-SERVER_IP="${SERVER_IP:-$(curl -fsSL -4 --max-time 5 https://icanhazip.com 2>/dev/null || curl -fsSL -4 --max-time 5 https://api.ipify.org | tr -d '[:space:]')}"
+SERVER_IP="${SERVER_IP:-}"
+if [ -z "${SERVER_IP}" ]; then
+    SERVER_IP="$(curl -fsSL -4 --max-time 5 https://icanhazip.com 2>/dev/null \
+        || curl -fsSL -4 --max-time 5 https://api.ipify.org 2>/dev/null \
+        || true)"
+    SERVER_IP="$(printf '%s' "${SERVER_IP}" | tr -d '[:space:]')"
+fi
+if [ -z "${SERVER_IP}" ]; then
+    echo "Error: failed to auto-detect the server's public IPv4 address."
+    echo "Re-run with an explicit value: SERVER_IP=<your.ip> PORT=${PORT} bash -s < deploy_dual_proxy.sh"
+    exit 1
+fi
 echo "Detected Server IP: ${SERVER_IP} (${ARCH})"
 
 # Check Cloud Provider Metadata for Firewall Hints
@@ -76,15 +87,19 @@ fi
 echo "=========================================="
 echo "4. Installing Xray ${XRAY_VERSION} (VLESS + REALITY)"
 echo "=========================================="
-bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+bash -c "$(curl -fsSL --connect-timeout 15 https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
 # Pin Xray binary to v1.8.24 for universal Mihomo / Shadowrocket REALITY compatibility
-curl -fsSL "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-${XRAY_ARCH}.zip" -o /tmp/xray_pinned.zip
+curl -fsSL --connect-timeout 15 --retry 2 "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-${XRAY_ARCH}.zip" -o /tmp/xray_pinned.zip
 mkdir -p /tmp/xray_pinned
 unzip -o /tmp/xray_pinned.zip xray -d /tmp/xray_pinned/
 install -m 755 /tmp/xray_pinned/xray /usr/local/bin/xray
 rm -rf /tmp/xray_pinned /tmp/xray_pinned.zip
 xray version
+if ! xray version | grep -q "${XRAY_VERSION#v}"; then
+    echo "Error: pinned Xray ${XRAY_VERSION} is not active after installation."
+    exit 1
+fi
 
 # Select a low-profile TLS 1.3 + H2 target domain (avoiding overused www.apple.com / www.microsoft.com)
 REALITY_TARGET="${REALITY_TARGET:-}"
@@ -103,6 +118,11 @@ VLESS_UUID="${VLESS_UUID:-$(xray uuid)}"
 KEYPAIR_OUT="$(xray x25519)"
 PRIVATE_KEY="$(echo "${KEYPAIR_OUT}" | awk -F':' '/Private/{print $2}' | tr -d '[:space:]')"
 PUBLIC_KEY="$(echo "${KEYPAIR_OUT}" | awk -F':' '/(Public|Password)/{print $2}' | tr -d '[:space:]')"
+if [ -z "${PRIVATE_KEY}" ] || [ -z "${PUBLIC_KEY}" ]; then
+    echo "Error: failed to parse xray x25519 output:"
+    echo "${KEYPAIR_OUT}"
+    exit 1
+fi
 SHORT_ID="${SHORT_ID:-$(openssl rand -hex 8)}"
 
 mkdir -p /usr/local/etc/xray
@@ -186,15 +206,32 @@ cat <<EOF > /usr/local/etc/xray/config.json
 EOF
 
 xray run -test -config /usr/local/etc/xray/config.json
-systemctl enable xray
-systemctl restart xray
+
+DEPLOY_FAILED=0
+start_service() {
+    local svc="$1"
+    if systemctl enable "${svc}" >/dev/null 2>&1 && systemctl restart "${svc}"; then
+        echo "[OK] ${svc} started"
+    else
+        echo "[ERROR] Failed to start ${svc}; inspect: journalctl -u ${svc} -n 100 --no-pager"
+        DEPLOY_FAILED=1
+    fi
+}
+start_service xray
 
 echo "=========================================="
 echo "5. Installing Hysteria 2 (UDP ${PORT})"
 echo "=========================================="
-bash <(curl -fsSL https://get.hy2.sh/)
+bash <(curl -fsSL --connect-timeout 15 https://get.hy2.sh/)
+if ! command -v hysteria >/dev/null 2>&1; then
+    echo "Error: Hysteria 2 installation failed (hysteria binary not found)."
+    exit 1
+fi
+if ! id hysteria >/dev/null 2>&1; then
+    echo "[WARN] 'hysteria' system user not found; the hysteria-server service may fail to start."
+fi
 
-HY2_PASSWORD="${HY2_PASSWORD:-$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)}"
+HY2_PASSWORD="${HY2_PASSWORD:-$(openssl rand -hex 12)}"
 mkdir -p /etc/hysteria
 openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
     -keyout /etc/hysteria/server.key \
@@ -228,16 +265,31 @@ masquerade:
     rewriteHost: true
 EOF
 
-systemctl enable hysteria-server
-systemctl restart hysteria-server
+# config.yaml contains the auth password; keep it private to the service user.
+if id hysteria >/dev/null 2>&1; then
+    chown hysteria:hysteria /etc/hysteria/config.yaml
+fi
+chmod 600 /etc/hysteria/config.yaml
+
+start_service hysteria-server
 sleep 2
 
 echo "=========================================="
-echo "6. Server-Side Loopback Tunnel Self-Test"
+echo "6. Service Status & Listener Check"
 echo "=========================================="
-systemctl is-active xray
-systemctl is-active hysteria-server
-ss -tulpn | grep ":${PORT}" || true
+for svc in xray hysteria-server; do
+    if systemctl is-active --quiet "${svc}"; then
+        echo "[OK] ${svc} is active"
+    else
+        echo "[ERROR] ${svc} is not active"
+        DEPLOY_FAILED=1
+    fi
+done
+if ss -tulpn 2>/dev/null | grep -Eq "[:.]${PORT}([^0-9]|$)"; then
+    ss -tulpn 2>/dev/null | grep -E "[:.]${PORT}([^0-9]|$)"
+else
+    echo "[WARN] No listener detected on port ${PORT}"
+fi
 
 VLESS_URI="vless://${VLESS_UUID}@${SERVER_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${REALITY_TARGET}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&udp=1#VPS-VLESS-Reality"
 HY2_URI="hysteria2://${HY2_PASSWORD}@${SERVER_IP}:${PORT}/?sni=${MASQ_DOMAIN}&insecure=1&pinSHA256=${HY2_PIN_SHA256}#VPS-Hysteria2"
@@ -252,4 +304,8 @@ echo "HY2_PASSWORD=${HY2_PASSWORD}"
 echo "HY2_PIN_SHA256=${HY2_PIN_SHA256}"
 echo "VLESS_URI=${VLESS_URI}"
 echo "HY2_URI=${HY2_URI}"
+if [ "${DEPLOY_FAILED}" -ne 0 ]; then
+    echo "DEPLOY_FAILED"
+    exit 1
+fi
 echo "DEPLOY_DONE"

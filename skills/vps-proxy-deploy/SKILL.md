@@ -51,7 +51,8 @@ What the script does automatically:
 - Opens the target TCP/UDP port in `ufw` / `firewalld` if active.
 - Installs Xray pinned to `v1.8.24`, generates UUID / x25519 keys / shortId, verifies a working TLS 1.3 + H2 target domain, and blocks private/metadata IP ranges (`169.254.0.0/16`, RFC1918) to prevent SSRF.
 - Installs Hysteria 2, generates a 10-year ECDSA self-signed certificate with SHA256 fingerprint pinning (`pinSHA256`), and configures reverse-proxy masquerade.
-- Prints ready-to-use `vless://` and `hysteria2://` URIs and raw parameters.
+- Prints ready-to-use `vless://` and `hysteria2://` URIs and raw parameters, then `DEPLOY_DONE` on success.
+- On failure it still prints the generated credentials, prints `DEPLOY_FAILED`, and exits non-zero, so the URIs are never lost to a service start failure.
 
 ### Step 3: Verify Direct-Line Connectivity from Client
 Run [scripts/verify_direct.sh](./scripts/verify_direct.sh) on the client machine:
